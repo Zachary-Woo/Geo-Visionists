@@ -12,6 +12,7 @@ The primary objective is to accurately classify various land cover types—inclu
 - **Land Management**: Mapping agricultural spread, deforestation rates, and conservation zones.
 
 ## Dataset
+- Located in /dataset
 
 ### Source
 - **BigEarthNet** (Sentinel-2 multispectral satellite image patches)
