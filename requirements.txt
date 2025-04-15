@@ -1,0 +1,16 @@
+numpy>=1.19.0
+matplotlib>=3.3.0
+--find-links https://download.pytorch.org/whl/torch_stable.html
+torch>=1.9.0+cu117
+torchvision>=0.10.0+cu117
+tqdm>=4.50.0
+rasterio>=1.2.0
+opencv-python>=4.5.0
+transformers>=4.15.0
+pytorch-msssim>=0.2.0
+scikit-learn>=0.24.0
+pandas>=1.2.0
+earthengine-api>=0.1.300
+shapely>=1.7.0
+imageio>=2.9.0
+seaborn>=0.11.0 
