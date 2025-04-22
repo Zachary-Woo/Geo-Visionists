@@ -14,12 +14,12 @@ import json # Keep for potential future use if needed directly in main
 import torch
 from torch.utils.data import DataLoader, Subset
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau
 
 # Import refactored components
 from config import config # Import the global config instance
 from utils import set_seed
-from dataset import PreprocessedSentinel2Sequence, train_transform, val_transform
+from dataset import PreprocessedSentinel2Sequence, train_transform, val_transform, safe_collate
 from model import UNetSwinHybrid
 from loss import HybridLoss
 from trainer import train_model
@@ -137,7 +137,7 @@ def main():
     print(f"Using experiment directory: {config.experiment_dir}")
 
     # Print device info ONCE here
-    print(f"Using device: {config.device} {\'(GPU)\' if torch.cuda.is_available() else \'(CPU)\'}")
+    print(f"Using device: {config.device} {'(GPU)' if torch.cuda.is_available() else '(CPU)'}")
     if config.device.type == 'cuda':
         print(f"GPU Name: {torch.cuda.get_device_name(0)}")
 
@@ -268,7 +268,9 @@ def main():
                         print(f"⚡ Reduced test dataset to {test_dataset_len} samples")
                 
                 # Use config.batch_size for test loader (evaluation can handle batches)
-                test_loader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=(config.device.type == 'cuda'))
+                test_loader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False, 
+                                         num_workers=args.num_workers, pin_memory=(config.device.type == 'cuda'),
+                                         collate_fn=safe_collate)
         else:
             print(f"Warning: Preprocessed test directory {test_preprocessed_dir} not found. Test evaluation will be skipped.")
 
@@ -286,70 +288,19 @@ def main():
              
         # Create data loaders
         train_loader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True, 
-                                 num_workers=args.num_workers, pin_memory=(config.device.type == 'cuda'))
+                                 num_workers=args.num_workers, pin_memory=(config.device.type == 'cuda'),
+                                 collate_fn=safe_collate)
         val_loader = DataLoader(val_dataset, batch_size=config.batch_size, shuffle=False, 
-                               num_workers=args.num_workers, pin_memory=(config.device.type == 'cuda'))
+                               num_workers=args.num_workers, pin_memory=(config.device.type == 'cuda'),
+                               collate_fn=safe_collate)
         
         # Initialize model, loss, optimizer, scheduler
         print("Initializing model...")
         model = UNetSwinHybrid(config)
         criterion = HybridLoss(alpha=0.8) # Alpha could be configurable
         optimizer = AdamW(model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay)
-        scheduler = CosineAnnealingLR(optimizer, T_max=config.num_epochs)
-        
-        # --- Dynamic Time Estimation ---
-        # (Keep this section as it provides useful info before long training)
-        print("\n--- Calculating Realistic Time Estimate ---")
-        num_profile_batches = min(5, len(train_loader), len(val_loader) if len(val_loader)>0 else 5)
-        estimated_total_seconds = -1
-        if num_profile_batches > 0:
-            # ... (rest of profiling logic) ...
-            model_for_profiling = UNetSwinHybrid(config).to(config.device) # Use a fresh model instance
-            model_for_profiling.train()
-            scaler_prof = torch.amp.GradScaler() if config.mixed_precision and config.device.type == 'cuda' else None
-            # Train profiling
-            train_start_time = time.time()
-            try:
-                for i, (inputs, targets) in enumerate(itertools.islice(train_loader, num_profile_batches)):
-                    inputs, targets = inputs.to(config.device), targets.to(config.device)
-                    optimizer.zero_grad() # Use main optimizer for profile
-                    if scaler_prof is not None:
-                         with torch.amp.autocast(device_type='cuda'): outputs = model_for_profiling(inputs); loss = criterion(outputs, targets)
-                         scaler_prof.scale(loss).backward(); scaler_prof.step(optimizer); scaler_prof.update()
-                    else: outputs = model_for_profiling(inputs); loss = criterion(outputs, targets); loss.backward(); optimizer.step()
-                train_end_time = time.time(); avg_train_batch_time = (train_end_time - train_start_time) / num_profile_batches
-                est_train_time_total = avg_train_batch_time * len(train_loader) * config.num_epochs
-                print(f"  Avg train batch time: {avg_train_batch_time:.3f}s")
-            except Exception as e: print(f"  Error during training profiling: {e}"); est_train_time_total = 0
-            # Val profiling
-            val_start_time = time.time(); est_val_time_total = 0
-            if len(val_loader) > 0:
-                 model_for_profiling.eval()
-                 try:
-                      with torch.no_grad():
-                           for i, (inputs, targets) in enumerate(itertools.islice(val_loader, num_profile_batches)):
-                                inputs, targets = inputs.to(config.device), targets.to(config.device)
-                                if scaler_prof is not None:
-                                     with torch.amp.autocast(device_type='cuda'): outputs = model_for_profiling(inputs); loss = criterion(outputs, targets)
-                                else: outputs = model_for_profiling(inputs); loss = criterion(outputs, targets)
-                      val_end_time = time.time(); avg_val_batch_time = (val_end_time - val_start_time) / num_profile_batches
-                      num_val_runs = config.num_epochs // config.eval_interval
-                      est_val_time_total = avg_val_batch_time * len(val_loader) * num_val_runs
-                      print(f"  Avg val batch time: {avg_val_batch_time:.3f}s (eval every {config.eval_interval} epochs)")
-                 except Exception as e: print(f"  Error during validation profiling: {e}"); est_val_time_total = 0
-            estimated_total_seconds = est_train_time_total + est_val_time_total
-            del model_for_profiling # Clean up profiling model
-
-        if estimated_total_seconds >= 0:
-            total_hours = estimated_total_seconds / 3600
-            print(f"\n---> Estimated Total Training Time: {total_hours:.1f} hours")
-        else: print("\n---> Could not estimate total training time.")
-        # --- Confirmation Prompt ---
-        print("---")
-        try: confirm = input("Press Enter to continue, or 'q' then Enter to quit: ")
-        except EOFError: confirm = '' # Handle no input
-        if confirm.lower() == 'q': print("Quitting."); return
-        print("--- Proceeding with training ---")
+        # Use ReduceLROnPlateau to adjust LR based on validation loss
+        scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=3, verbose=True)
         
         # --- Train the model ---
         print(f"Starting training for {config.num_epochs} epochs...")
@@ -406,7 +357,8 @@ def main():
             
         # Use config batch size for evaluation loader
         test_loader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False, 
-                                 num_workers=args.num_workers, pin_memory=(config.device.type == 'cuda'))
+                                 num_workers=args.num_workers, pin_memory=(config.device.type == 'cuda'),
+                                 collate_fn=safe_collate)
         
         print(f"Evaluating model: {config.model_path}")
         # Call evaluate_model from evaluator.py

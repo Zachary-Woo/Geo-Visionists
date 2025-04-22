@@ -5,6 +5,21 @@ from matplotlib.colors import ListedColormap
 import torch
 from torch.utils.data import DataLoader # Needed for DataLoader creation
 
+# Helper function for contrast stretching
+def stretch_contrast(img_array):
+    """Apply contrast stretching using percentile clipping (2nd-98th)."""
+    stretched = np.zeros_like(img_array, dtype=np.float32)
+    for i in range(img_array.shape[2]): # Iterate through channels
+        channel = img_array[:, :, i].astype(np.float32)
+        p2, p98 = np.percentile(channel, (2, 98))
+        if p98 - p2 > 1e-6: # Avoid division by zero/small range
+            stretched_channel = (channel - p2) / (p98 - p2)
+            stretched[:, :, i] = np.clip(stretched_channel, 0, 1)
+        else:
+            # If range is too small, just clip to [0, 1]
+            stretched[:, :, i] = np.clip(channel, 0, 1)
+    return stretched
+
 # Evaluation and visualization functions
 def visualize_predictions(model, test_loader, config, num_samples=5):
     """
@@ -86,9 +101,12 @@ def visualize_predictions(model, test_loader, config, num_samples=5):
                 # For RGB visualization, take the first 3 bands if available
                 if frame.shape[0] >= 3:
                     rgb_frame = frame[:3].transpose(1, 2, 0)
-                    axes[ax_idx].imshow(np.clip(rgb_frame, 0, 1))
+                    # Apply contrast stretching for visualization
+                    stretched_frame = stretch_contrast(rgb_frame)
+                    axes[ax_idx].imshow(stretched_frame)
                 else:
-                    axes[ax_idx].imshow(frame[0], cmap='gray')
+                    # Grayscale doesn't need stretching in the same way
+                    axes[ax_idx].imshow(np.clip(frame[0], 0, 1), cmap='gray')
                 
                 axes[ax_idx].set_title(f"Input frame {frame_idx}")
                 axes[ax_idx].axis('off')
@@ -110,13 +128,17 @@ def visualize_predictions(model, test_loader, config, num_samples=5):
                 rgb_target = target_img[:3].transpose(1, 2, 0)
                 rgb_output = output_img[:3].transpose(1, 2, 0)
                 
-                axes[target_ax].imshow(np.clip(rgb_target, 0, 1))
-                axes[pred_ax].imshow(np.clip(rgb_output, 0, 1))
+                # Apply contrast stretching for visualization
+                stretched_target = stretch_contrast(rgb_target)
+                stretched_output = stretch_contrast(rgb_output)
+                
+                axes[target_ax].imshow(stretched_target)
+                axes[pred_ax].imshow(stretched_output)
                 axes[target_ax].set_title("Target Frame (RGB)")
                 axes[pred_ax].set_title("Predicted Frame (RGB)")
                 
-                # RGB Error map (MSE per pixel)
-                error_map = np.mean((rgb_target - rgb_output) ** 2, axis=2)
+                # RGB Error map (MSE per pixel) - Calculate on original outputs
+                error_map = np.mean((np.clip(rgb_target, 0, 1) - np.clip(rgb_output, 0, 1)) ** 2, axis=2)
                 im = axes[rgb_err_ax].imshow(error_map, cmap='hot')
                 axes[rgb_err_ax].set_title("RGB Error Map (MSE)")
                 plt.colorbar(im, ax=axes[rgb_err_ax], fraction=0.046, pad=0.04)

@@ -59,7 +59,17 @@ class PreprocessedSentinel2Sequence(Dataset):
         
         try:
             # Load the dictionary containing tensors
-            data_dict = torch.load(pt_file_path)
+            # Set weights_only=True for security as recommended by PyTorch.
+            # Assumes .pt files contain only tensors and basic types.
+            # --- Error Handling for torch.load ---
+            try:
+                data_dict = torch.load(pt_file_path, weights_only=True)
+            except (EOFError, RuntimeError) as load_error:
+                # Catch EOFError (incomplete file) and RuntimeError (e.g., zip archive errors)
+                print(f"Warning: Skipping corrupted file {pt_file_path}. Error: {load_error}", file=sys.stderr)
+                return None # Signal to collate_fn to skip this sample
+            # --- End Error Handling ---
+
             input_sequence = data_dict['input']  # Shape (T, C, H, W)
             target_frame = data_dict['target'] # Shape (C, H, W)
             
@@ -99,18 +109,35 @@ class PreprocessedSentinel2Sequence(Dataset):
 
         except FileNotFoundError:
             print(f"Error: Preprocessed file not found: {pt_file_path}", file=sys.stderr)
-            # Return None or raise? Let dataloader handle it by raising error
-            raise FileNotFoundError(f"Missing preprocessed file: {pt_file_path}")
+            # Return None to be skipped by collate_fn
+            return None
         except KeyError as e:
             print(f"Error: Key {e} not found in preprocessed file: {pt_file_path}", file=sys.stderr)
-            raise KeyError(f"Corrupted preprocessed file (missing key): {pt_file_path}")
+            # Return None to be skipped by collate_fn
+            return None
         except Exception as e:
-            print(f"Unexpected error loading or processing sequence {idx} ({pt_file_path}): {e}", file=sys.stderr)
-            import traceback
-            traceback.print_exc()
-            raise e
+            # Catch other potential errors during loading/processing
+            print(f"Unexpected error processing sequence {idx} ({pt_file_path}): {e}", file=sys.stderr)
+            # import traceback # Avoid importing traceback in production loop if possible
+            # traceback.print_exc() 
+            # Return None to be skipped
+            return None
 
         return input_sequence, target_frame
+
+# Custom collate function to handle None values returned by __getitem__
+def safe_collate(batch):
+    """Collate function that filters out None items (corrupted samples)."""
+    # Filter out None entries
+    batch = [item for item in batch if item is not None]
+    # If the batch is empty after filtering, return None or empty tensors?
+    # Returning empty tensors might require careful handling downstream.
+    # Returning None might be simpler if the training loop checks for it.
+    if not batch:
+        return None, None # Or return appropriate empty tensors if needed
+    
+    # Use default collate for the filtered batch
+    return torch.utils.data.dataloader.default_collate(batch)
 
 # Data augmentation - Apply these *after* loading tensors if needed
 # Normalization should be done in preprocessing

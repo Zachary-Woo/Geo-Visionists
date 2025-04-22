@@ -36,6 +36,7 @@ python main.py --mode explore --data_root ./dataset/BigEarthNet-S2 --output_dir 
 Filter the dataset to focus on specific geographic areas:
 ```bash
 # Example: Filter for Lisbon, Portugal
+# This creates ./output/filter_X/filtered_images.csv (and .txt)
 python main.py --mode filter --data_root ./dataset/BigEarthNet-S2 --output_dir ./output --min_lat 38.6 --max_lat 38.9 --min_lon -9.3 --max_lon -9.0
 ```
 Additional filter options:
@@ -53,9 +54,19 @@ python main.py --mode prepare --data_root ./dataset/BigEarthNet-S2 --output_dir 
 
 ### 5. Preprocess Image Sequences (Recommended for Speed)
 Convert the raw image sequences defined in the `.pkl` files into preprocessed PyTorch tensors (`.pt` files). This significantly speeds up training by performing image loading and normalization only once.
+
+**Option A: Preprocess entire dataset**
 ```bash
 python preprocess_sequences.py --data_root ./dataset/BigEarthNet-S2 --sequences_dir ./output/sequences --output_dir ./output/preprocessed_sequences --patch_size 256
 ```
+
+**Option B: Preprocess only filtered sequences (e.g., for Portugal)**
+Make sure you have run the `filter` step first (Step 3) to generate the `filtered_images.csv` file.
+```bash
+# Example assuming filter output is in ./output/filter_1/filtered_images.csv
+python preprocess_sequences.py --data_root ./dataset/BigEarthNet-S2 --sequences_dir ./output/sequences --output_dir ./output/preprocessed_sequences --patch_size 256 --filtered_list_csv ./output/filter_1/filtered_images.csv
+```
+
 *   This creates `train/`, `val/`, and `test/` subdirectories in `./output/preprocessed_sequences/` containing the `.pt` files.
 *   If this process is interrupted, the dataset loader will use only the files that were successfully created.
 
@@ -89,6 +100,7 @@ python main.py --mode train --data_root ./dataset/BigEarthNet-S2 --output_dir ./
 
 ### 7. Evaluate the Model
 Test the trained model's performance using preprocessed test data:
+# Not needed unless you wish to evaluate a model from a different training run or to save the evaluation results in an eval folder
 ```bash
 python main.py --mode eval --model_path ./output/train_X/best_model.pth --output_dir ./output
 ```
@@ -123,7 +135,7 @@ python main.py --mode eval --model_path ./output/train_X/best_model.pth --output
 │   ├── train/
 │   ├── val/
 │   └── test/
-├── filter_X/                   # Output from filter mode
+├── filter_X/                   # Output from filter mode (e.g., filtered_images.csv)
 ├── train_X/                    # Training run results
 │   ├── best_model.pth
 │   ├── final_model.pth
@@ -144,6 +156,7 @@ The hybrid architecture combines:
 
 ## Performance Notes
 - Preprocessing sequences into `.pt` files drastically reduces training time compared to loading TIFs on the fly.
+- Using the `--filtered_list_csv` option during preprocessing avoids processing the entire dataset if only a subset is needed.
 - Training time depends heavily on the number of samples and epochs.
 - Use `--max_samples` and `--epochs` to balance training time and model quality.
 

@@ -7,12 +7,6 @@ class Config:
     # Data parameters
     data_root = "./dataset/BigEarthNet-S2"
     output_dir = "./output"
-    jakarta_coords = {
-        # Approximate bounding box for Jakarta, Indonesia
-        # Will be used to filter relevant tiles if exact coordinates are known
-        'min_lat': -6.4, 'max_lat': -5.9,
-        'min_lon': 106.6, 'max_lon': 107.0
-    }
     sequence_length = 11  # Input sequence length
     pred_horizon = 1      # Predict 1 frame ahead (12th frame)
     patch_size = 256      # Size of image patches
@@ -26,10 +20,10 @@ class Config:
     dropout = 0.3
     
     # Training parameters
-    batch_size = 24
-    learning_rate = 1e-4
+    batch_size = 8        # Set based on successful train_2
+    learning_rate = 4e-5  # Intermediate LR
     weight_decay = 1e-5
-    num_epochs = 50
+    num_epochs = 50       # Moderate number of epochs
     device = None  # Will be set during initialization
     mixed_precision = True
     

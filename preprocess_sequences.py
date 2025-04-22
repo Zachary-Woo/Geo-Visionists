@@ -4,12 +4,14 @@ Preprocess Sentinel-2 Image Sequences
 This script converts sequences of Sentinel-2 TIF patches (defined in .pkl files)
 into pre-processed PyTorch tensors (.pt files) for faster loading during training.
 It performs the necessary image loading, resampling, resizing, and normalization once.
+Can optionally filter sequences based on a pre-generated list of allowed patch paths.
 """
 
 import os
 import glob
 import pickle
 import numpy as np
+import pandas as pd # Added for reading filtered list CSV
 import torch
 import rasterio
 from rasterio.plot import reshape_as_image
@@ -66,7 +68,7 @@ def load_and_preprocess_image(img_path, bands, target_patch_size):
         for band in bands:
             band_files = glob.glob(os.path.join(img_path, f"*_{band}.tif"))
             if not band_files:
-                print(f"Warning: Required band {band} not found in {img_path}", file=sys.stderr)
+                # Reduced verbosity: print(f"Warning: Required band {band} not found in {img_path}", file=sys.stderr)
                 return None # Cannot proceed without all required bands
 
             try:
@@ -88,10 +90,16 @@ def load_and_preprocess_image(img_path, bands, target_patch_size):
                         )
                     loaded_band_data[band] = band_array
             except rasterio.RasterioIOError as e:
-                 print(f"Error reading band {band} in {img_path}: {e}", file=sys.stderr)
+                 # Reduced verbosity: print(f"Error reading band {band} in {img_path}: {e}", file=sys.stderr)
                  return None
 
         # Stack bands in the specified order
+        # Check if all requested bands were actually loaded
+        if len(loaded_band_data) != len(bands):
+             missing = set(bands) - set(loaded_band_data.keys())
+             # Reduced verbosity: print(f"Warning: Could not load all requested bands ({missing}) for {img_path}", file=sys.stderr)
+             return None
+             
         img_array_bands = [loaded_band_data[b] for b in bands]
         img_array = np.stack(img_array_bands, axis=0)
 
@@ -117,15 +125,15 @@ def load_and_preprocess_image(img_path, bands, target_patch_size):
         return img_tensor_chw
 
     except FileNotFoundError as e:
-        print(f"Error (FileNotFound): {e}", file=sys.stderr)
+        # Reduced verbosity: print(f"Error (FileNotFound): {e}", file=sys.stderr)
         return None
     except Exception as e:
         print(f"Unexpected error processing {img_path}: {e}", file=sys.stderr)
         traceback.print_exc()
         return None
 
-def preprocess_sequences(data_root, sequence_file, output_dir, bands, patch_size, sequence_length):
-    """Loads sequences from a pkl file and saves preprocessed tensors."""
+def preprocess_sequences(data_root, sequence_file, output_dir, bands, patch_size, sequence_length, filtered_list_csv=None):
+    """Loads sequences from a pkl file, optionally filters them, and saves preprocessed tensors."""
 
     print(f"Loading sequences from: {sequence_file}")
     try:
@@ -142,18 +150,57 @@ def preprocess_sequences(data_root, sequence_file, output_dir, bands, patch_size
         print(f"No sequences found in {sequence_file}.")
         return 0
 
+    # --- Filtering Logic ---
+    allowed_paths = None
+    if filtered_list_csv:
+        print(f"Loading allowed paths from: {filtered_list_csv}")
+        try:
+            df_filter = pd.read_csv(filtered_list_csv)
+            if 'relative_path' not in df_filter.columns:
+                print(f"Error: CSV file {filtered_list_csv} must contain a 'relative_path' column.", file=sys.stderr)
+                return 0
+            # Convert to set for fast lookup
+            allowed_paths = set(df_filter['relative_path'].tolist())
+            print(f"Loaded {len(allowed_paths)} allowed relative paths.")
+            
+            # Filter the sequences
+            original_count = len(sequences)
+            filtered_sequences = []
+            for seq in tqdm(sequences, desc="Filtering sequences"):
+                # Check if ALL paths in the sequence are in the allowed set
+                if all(rel_path in allowed_paths for rel_path in seq):
+                    filtered_sequences.append(seq)
+            
+            sequences = filtered_sequences # Replace original list with filtered list
+            print(f"Filtered sequences: {len(sequences)} remaining (from {original_count})")
+            if not sequences:
+                 print("No sequences remaining after filtering.")
+                 return 0
+        except FileNotFoundError:
+            print(f"Error: Filtered list CSV not found at {filtered_list_csv}", file=sys.stderr)
+            return 0
+        except Exception as e:
+            print(f"Error reading or processing filtered list CSV {filtered_list_csv}: {e}", file=sys.stderr)
+            return 0
+    # --- End Filtering Logic ---
+
     os.makedirs(output_dir, exist_ok=True)
     print(f"Processing {len(sequences)} sequences. Outputting to: {output_dir}")
 
     processed_count = 0
     error_count = 0
+    skip_count = 0 # Count sequences skipped due to missing images during processing
 
     # Expected length: input sequence + target frame
     expected_len = sequence_length + 1
 
+    # Use index from original enumeration if filtered, otherwise just enumerate
+    # We need a consistent index for the output filename (sequence_XXXXXX.pt)
+    # Let's just use the index within the *potentially filtered* list
     for i, relative_path_sequence in enumerate(tqdm(sequences, desc=f"Preprocessing {os.path.basename(output_dir)}")):
 
         if len(relative_path_sequence) != expected_len:
+            # This check should ideally be done during sequence preparation
             print(f"Warning: Sequence {i} has incorrect length {len(relative_path_sequence)}, expected {expected_len}. Skipping.", file=sys.stderr)
             error_count += 1
             continue
@@ -168,13 +215,13 @@ def preprocess_sequences(data_root, sequence_file, output_dir, bands, patch_size
             full_patch_path = os.path.join(data_root, relative_patch_path)
             img_tensor = load_and_preprocess_image(full_patch_path, bands, patch_size)
             if img_tensor is None:
-                print(f"Error processing input frame {j} for sequence {i} ({relative_patch_path}). Skipping sequence.", file=sys.stderr)
+                # Reduced verbosity: print(f"Error processing input frame {j} for sequence {i} ({relative_patch_path}). Skipping sequence.", file=sys.stderr)
                 valid_sequence = False
                 break
             input_frames.append(img_tensor)
 
         if not valid_sequence:
-            error_count += 1
+            skip_count += 1
             continue
 
         # Process target frame
@@ -183,14 +230,19 @@ def preprocess_sequences(data_root, sequence_file, output_dir, bands, patch_size
         target_frame = load_and_preprocess_image(target_full_path, bands, patch_size)
 
         if target_frame is None:
-            print(f"Error processing target frame for sequence {i} ({target_relative_path}). Skipping sequence.", file=sys.stderr)
-            error_count += 1
+            # Reduced verbosity: print(f"Error processing target frame for sequence {i} ({target_relative_path}). Skipping sequence.", file=sys.stderr)
+            skip_count += 1
             continue
 
         # Stack input frames: (T, C, H, W)
-        input_sequence_tensor = torch.stack(input_frames)
+        try:
+            input_sequence_tensor = torch.stack(input_frames)
+        except RuntimeError as e:
+            print(f"Error stacking tensors for sequence {i}. Check tensor shapes. Error: {e}", file=sys.stderr)
+            error_count += 1
+            continue
 
-        # Save the preprocessed data
+        # Save the preprocessed data using the index 'i' from the current loop
         output_filename = f"sequence_{i:06d}.pt"
         output_path = os.path.join(output_dir, output_filename)
         try:
@@ -204,8 +256,9 @@ def preprocess_sequences(data_root, sequence_file, output_dir, bands, patch_size
             error_count += 1
 
     print(f"Finished preprocessing {os.path.basename(output_dir)}.")
-    print(f"  Successfully processed: {processed_count}")
-    print(f"  Errors/Skipped: {error_count}")
+    print(f"  Successfully processed and saved: {processed_count}")
+    print(f"  Skipped due to image processing errors: {skip_count}")
+    print(f"  Other errors (length mismatch, saving errors): {error_count}")
     return processed_count
 
 def main():
@@ -216,6 +269,8 @@ def main():
                         help='Directory containing the sequence .pkl files (output of prepare_sequences.py)')
     parser.add_argument('--output_dir', type=str, required=True,
                         help='Directory to save the preprocessed .pt files')
+    parser.add_argument('--filtered_list_csv', type=str, default=None,
+                        help='Optional path to a CSV file containing a list of allowed relative_paths (output of filter_images.py). Only sequences whose patches are all in this list will be processed.')
     parser.add_argument('--bands', nargs='+', default=['B02', 'B03', 'B04', 'B08'],
                         help='List of bands to include in the preprocessed tensors')
     parser.add_argument('--patch_size', type=int, default=256,
@@ -229,6 +284,8 @@ def main():
     print(f"Original Data Root: {args.data_root}")
     print(f"Input Sequence Dir: {args.sequences_dir}")
     print(f"Output Preprocessed Dir: {args.output_dir}")
+    if args.filtered_list_csv:
+        print(f"Filtering using CSV: {args.filtered_list_csv}")
     print(f"Bands: {args.bands}")
     print(f"Patch Size: {args.patch_size}")
     print(f"Input Sequence Length: {args.sequence_length}")
@@ -260,14 +317,15 @@ def main():
                 out_dir,
                 args.bands,
                 args.patch_size,
-                args.sequence_length
+                args.sequence_length,
+                args.filtered_list_csv # Pass the filter CSV path
             )
             total_processed += count
         else:
             print(f"\nSequence file for {split} split not found ({seq_file}). Skipping.")
 
     print(f"\n--- Preprocessing Complete ---")
-    print(f"Total sequences saved as .pt files: {total_processed}")
+    print(f"Total sequences processed and saved as .pt files: {total_processed}")
     print(f"Preprocessed data saved to: {args.output_dir}")
 
 if __name__ == "__main__":

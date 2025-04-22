@@ -289,7 +289,7 @@ def main():
     parser.add_argument('--sequence_length', type=int, default=11, help='Number of consecutive images in input sequence (e.g., 11 inputs to predict 12th)')
     parser.add_argument('--max_time_gap', type=int, default=60, help='Maximum allowed time gap (days) between consecutive images')
     parser.add_argument('--locations', type=str, nargs='+', help='Specific tile locations (e.g., T35VNL) to include. If not specified, all locations are used.')
-    parser.add_argument('--split_ratios', type=float, nargs=3, default=[0.8, 0.1, 0.1], help='Train, validation, test split ratios (must sum to 1)')
+    parser.add_argument('--split_ratios', type=float, nargs=3, default=[0.9, 0.05, 0.05], help='Train, validation, test split ratios (must sum to 1)')
     parser.add_argument('--seed', type=int, default=42, help='Random seed for splitting sequences')
 
     args = parser.parse_args()

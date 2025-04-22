@@ -27,7 +27,9 @@ def evaluate_model(model_path, test_loader, config):
     model = UNetSwinHybrid(config)
     
     # Load model weights
-    model.load_state_dict(torch.load(model_path, map_location=config.device))
+    # Use weights_only=True for security when loading state dicts
+    state_dict = torch.load(model_path, map_location=config.device, weights_only=True)
+    model.load_state_dict(state_dict)
     model = model.to(config.device)
     model.eval()
     

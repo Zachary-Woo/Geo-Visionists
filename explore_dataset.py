@@ -170,7 +170,17 @@ def create_rgb_image(band_data, r_band='B04', g_band='B03', b_band='B02', scale=
     rgb = rgb.astype(np.float32) * scale
     rgb = np.clip(rgb, 0, 1)
     
-    return rgb
+    # Apply contrast stretching using percentile clipping for visualization
+    stretched_rgb = np.zeros_like(rgb)
+    for i in range(rgb.shape[2]): # Iterate through R, G, B channels
+        channel = rgb[:, :, i]
+        # Calculate 2nd and 98th percentiles
+        p2, p98 = np.percentile(channel, (2, 98))
+        # Clip and rescale
+        stretched_channel = (channel - p2) / (p98 - p2)
+        stretched_rgb[:, :, i] = np.clip(stretched_channel, 0, 1)
+        
+    return stretched_rgb
 
 def create_ndvi_image(band_data, nir_band='B08', red_band='B04'):
     """

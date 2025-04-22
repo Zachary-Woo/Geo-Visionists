@@ -6,6 +6,7 @@ from tqdm import tqdm
 import torch
 import torch.nn.functional as F
 from pytorch_msssim import SSIM # Needed for validation metrics calculation
+import numpy as np
 
 # Training function
 def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, config):
@@ -98,6 +99,11 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         # Display more detailed progress
         epoch_progress = tqdm(train_loader, desc=f"Epoch {epoch+1}/{config.num_epochs}")
         for batch_idx, (inputs, targets) in enumerate(epoch_progress):
+            # Check if the batch is None (due to safe_collate returning None for an empty batch)
+            if inputs is None or targets is None:
+                # print(f"Skipping empty/corrupted batch {batch_idx}") # Optional: Log skipped batches
+                continue # Skip to the next batch
+                
             inputs, targets = inputs.to(device), targets.to(device)
             
             optimizer.zero_grad()
@@ -138,9 +144,6 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
                     epoch_progress.set_description(
                         f"Epoch {epoch+1}/{config.num_epochs} - Loss: {avg_loss:.4f} - ETA: {remaining_hours}h {remaining_minutes}m"
                     )
-        
-        # Update learning rate
-        scheduler.step()
         
         # Calculate average training loss
         avg_train_loss = train_loss / len(train_loader) if len(train_loader) > 0 else 0
@@ -191,6 +194,13 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
                     desc="Validation"
                 )
                 for inputs, targets in val_progress:
+                    # Check if the batch is None (can happen if val set also has corrupted files)
+                    if inputs is None or targets is None:
+                        # print(f"Skipping empty/corrupted validation batch") # Optional
+                        max_val_batches -= 1 # Adjust total count if skipping
+                        val_progress.total = max_val_batches # Update progress bar total
+                        continue
+                        
                     inputs, targets = inputs.to(device), targets.to(device)
                     
                     outputs = model(inputs)
@@ -248,6 +258,9 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
             print(f"Train Loss: {avg_train_loss:.4f}")
             print(f"Val Loss: {avg_val_loss:.4f}, MSE: {avg_val_mse:.4f}, MAE: {avg_val_mae:.4f}")
             print(f"PSNR: {avg_val_psnr:.4f}, SSIM: {avg_val_ssim:.4f}\n")
+
+            # Step the scheduler based on validation loss
+            scheduler.step(avg_val_loss) 
     
     # Save final model
     final_model_path = os.path.join(config.experiment_dir, 'final_model.pth')
