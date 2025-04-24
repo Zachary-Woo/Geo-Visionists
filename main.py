@@ -7,14 +7,11 @@ import os
 import sys
 import argparse
 import subprocess
-import time
-import itertools
-import json # Keep for potential future use if needed directly in main
 
 import torch
 from torch.utils.data import DataLoader, Subset
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 # Import refactored components
 from config import config # Import the global config instance
@@ -110,7 +107,7 @@ def main():
     
     # Apply fast mode settings if requested (small dataset, few epochs)
     if args.fast_mode:
-        print("🚀 FAST MODE ENABLED - Using reduced dataset and training parameters")
+        print("FAST MODE ENABLED - Using reduced dataset and training parameters")
         # Override max_samples if not manually set
         if args.max_samples is None:
             args.max_samples = 1000  # Use only 1000 training samples

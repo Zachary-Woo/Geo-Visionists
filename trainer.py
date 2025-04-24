@@ -1,7 +1,6 @@
 import os
 import time
 import json
-import itertools
 from tqdm import tqdm
 import torch
 import torch.nn.functional as F
@@ -101,7 +100,6 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         for batch_idx, (inputs, targets) in enumerate(epoch_progress):
             # Check if the batch is None (due to safe_collate returning None for an empty batch)
             if inputs is None or targets is None:
-                # print(f"Skipping empty/corrupted batch {batch_idx}") # Optional: Log skipped batches
                 continue # Skip to the next batch
                 
             inputs, targets = inputs.to(device), targets.to(device)
@@ -188,7 +186,6 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
                 
             with torch.no_grad():
                 val_progress = tqdm(
-                    # itertools.islice(val_loader, max_val_batches), # Removed slice to use full val set
                     val_loader,
                     total=max_val_batches,
                     desc="Validation"
@@ -196,7 +193,6 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
                 for inputs, targets in val_progress:
                     # Check if the batch is None (can happen if val set also has corrupted files)
                     if inputs is None or targets is None:
-                        # print(f"Skipping empty/corrupted validation batch") # Optional
                         max_val_batches -= 1 # Adjust total count if skipping
                         val_progress.total = max_val_batches # Update progress bar total
                         continue
@@ -221,7 +217,6 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
                     
                     # Calculate SSIM
                     # Re-initialize SSIM module inside loop if needed, or ensure it handles varying batch sizes
-                    # For simplicity, using the one initialized outside the loop
                     # Ensure inputs are on the same device
                     if outputs.device != targets.device:
                         targets = targets.to(outputs.device)

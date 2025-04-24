@@ -21,7 +21,7 @@ import rasterio.warp
 from tqdm import tqdm
 import argparse
 import shutil
-from shapely.geometry import Polygon, box
+from shapely.geometry import box
 import sys
 import logging
 

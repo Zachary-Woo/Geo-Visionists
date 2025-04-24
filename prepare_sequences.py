@@ -7,7 +7,6 @@ from the same location and organizes them into sequences.
 """
 
 import os
-import json
 import glob
 import numpy as np
 import pandas as pd
@@ -16,7 +15,6 @@ import argparse
 from tqdm import tqdm
 import pickle
 from itertools import groupby
-from operator import itemgetter
 
 def extract_date_tile_patch_info(patch_path):
     """Extract date, tile ID, and patch coordinates from patch directory path."""

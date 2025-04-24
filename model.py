@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.models import resnet50
 from torchvision.models.resnet import ResNet50_Weights
-from transformers import SwinConfig, SwinModel # Keep transformers import for now, though SwinModel is replaced
 
 # Model architecture
 class UNetEncoder(nn.Module):
@@ -64,8 +63,6 @@ class SwinTemporalTransformer(nn.Module):
         # Initial projection to transform ResNet features to transformer dimensions
         self.projection = nn.Linear(input_dim, hidden_dim)
         
-        # Instead of using the Hugging Face Swin implementation which has compatibility issues,
-        # let's create a simpler transformer that doesn't rely on position_embeddings
         self.transformer_encoder = nn.TransformerEncoder(
             encoder_layer=nn.TransformerEncoderLayer(
                 d_model=hidden_dim, 
@@ -192,7 +189,7 @@ class UNetSwinHybrid(nn.Module):
         Returns:
             Predicted next frame of shape [batch, channels, height, width]
         """
-        batch_size, seq_len, channels, height, width = x.shape
+        seq_len = x.shape
         
         # Process each frame with U-Net encoder
         frame_features = []

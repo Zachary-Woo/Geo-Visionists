@@ -48,17 +48,13 @@ def load_and_preprocess_image(img_path, bands, target_patch_size):
         available_bands_in_patch = [os.path.basename(f).split('_')[-1].split('.')[0]
                                   for f in glob.glob(os.path.join(img_path, "*.tif"))]
 
-        found_10m_shape = False
         for band_name in preferred_10m_bands:
-            # Check if the preferred band is actually needed for the final output
-            # AND if it's available in the patch
             if band_name in bands and band_name in available_bands_in_patch:
                 band_files = glob.glob(os.path.join(img_path, f"*_{band_name}.tif"))
                 if band_files:
                     try:
                         with rasterio.open(band_files[0]) as src:
                             target_shape = (src.height, src.width)
-                            found_10m_shape = True
                             break
                     except rasterio.RasterioIOError:
                         pass # Try next preferred band
@@ -68,7 +64,6 @@ def load_and_preprocess_image(img_path, bands, target_patch_size):
         for band in bands:
             band_files = glob.glob(os.path.join(img_path, f"*_{band}.tif"))
             if not band_files:
-                # Reduced verbosity: print(f"Warning: Required band {band} not found in {img_path}", file=sys.stderr)
                 return None # Cannot proceed without all required bands
 
             try:
@@ -96,8 +91,6 @@ def load_and_preprocess_image(img_path, bands, target_patch_size):
         # Stack bands in the specified order
         # Check if all requested bands were actually loaded
         if len(loaded_band_data) != len(bands):
-             missing = set(bands) - set(loaded_band_data.keys())
-             # Reduced verbosity: print(f"Warning: Could not load all requested bands ({missing}) for {img_path}", file=sys.stderr)
              return None
              
         img_array_bands = [loaded_band_data[b] for b in bands]
@@ -195,8 +188,6 @@ def preprocess_sequences(data_root, sequence_file, output_dir, bands, patch_size
     expected_len = sequence_length + 1
 
     # Use index from original enumeration if filtered, otherwise just enumerate
-    # We need a consistent index for the output filename (sequence_XXXXXX.pt)
-    # Let's just use the index within the *potentially filtered* list
     for i, relative_path_sequence in enumerate(tqdm(sequences, desc=f"Preprocessing {os.path.basename(output_dir)}")):
 
         if len(relative_path_sequence) != expected_len:
@@ -215,7 +206,6 @@ def preprocess_sequences(data_root, sequence_file, output_dir, bands, patch_size
             full_patch_path = os.path.join(data_root, relative_patch_path)
             img_tensor = load_and_preprocess_image(full_patch_path, bands, patch_size)
             if img_tensor is None:
-                # Reduced verbosity: print(f"Error processing input frame {j} for sequence {i} ({relative_patch_path}). Skipping sequence.", file=sys.stderr)
                 valid_sequence = False
                 break
             input_frames.append(img_tensor)
@@ -230,7 +220,6 @@ def preprocess_sequences(data_root, sequence_file, output_dir, bands, patch_size
         target_frame = load_and_preprocess_image(target_full_path, bands, patch_size)
 
         if target_frame is None:
-            # Reduced verbosity: print(f"Error processing target frame for sequence {i} ({target_relative_path}). Skipping sequence.", file=sys.stderr)
             skip_count += 1
             continue
 
