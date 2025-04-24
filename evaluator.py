@@ -55,8 +55,7 @@ def evaluate_model(model_path, test_loader, config):
             # Calculate metrics
             mse = F.mse_loss(outputs, targets).item()
             mae = F.l1_loss(outputs, targets).item()
-            
-            # Fix: Convert mse to tensor before using torch.log10
+
             # Clamp mse to avoid log10(0) or negative values
             mse_clamped = max(mse, 1e-10)
             mse_tensor = torch.tensor(mse_clamped, device=config.device)

@@ -1,0 +1,14 @@
+{
+    "device": "cuda",
+    "data_root": "./dataset/BigEarthNet-S2",
+    "output_dir": "./output",
+    "batch_size": 8,
+    "sequence_length": 11,
+    "resume_training": false,
+    "checkpoint_path": null,
+    "model_path": null,
+    "experiment_name": "train_8",
+    "experiment_dir": "./output\\train_8",
+    "checkpoint_dir": "./output\\train_8\\checkpoints",
+    "visualization_dir": "./output\\train_8\\visualizations"
+}

@@ -1,18 +1,9 @@
 import os
 import glob
-import numpy as np
-# import pickle # No longer needed for loading sequences
-# import sys # Keep sys for potential stderr usage later
 import sys 
-# import cv2 # No longer needed for image processing
-# import rasterio # No longer needed for image processing
-# from rasterio.plot import reshape_as_image # No longer needed
 import torch
 from torch.utils.data import Dataset
 import torchvision.transforms as transforms
-
-# Import the global config object (might still be needed for transforms or other info)
-from config import config
 
 class PreprocessedSentinel2Sequence(Dataset):
     """Dataset for loading sequences of Sentinel-2 images from preprocessed .pt files."""
@@ -32,14 +23,9 @@ class PreprocessedSentinel2Sequence(Dataset):
 
         if not os.path.isdir(preprocessed_dir):
             print(f"Error: Preprocessed directory not found at {preprocessed_dir}", file=sys.stderr)
-            # Optionally, you could try to create it or raise an error
-            # os.makedirs(preprocessed_dir, exist_ok=True)
-            # print(f"Created directory {preprocessed_dir}")
-            # For now, just print error and return empty dataset
             return 
             
         # Find all existing .pt files
-        # Sort them to ensure consistent order, assuming filenames are like sequence_000000.pt
         pt_files = sorted(glob.glob(os.path.join(self.preprocessed_dir, "sequence_*.pt")))
         self.sequences = pt_files
         
@@ -47,8 +33,6 @@ class PreprocessedSentinel2Sequence(Dataset):
             print(f"Warning: No preprocessed .pt files found in {self.preprocessed_dir}. Did you run preprocess_sequences.py?", file=sys.stderr)
         else:
              print(f"Found {len(self.sequences)} preprocessed sequences in {self.preprocessed_dir}")
-
-    # _load_sentinel2_image method is no longer needed as we load tensors directly
 
     def __len__(self):
         return len(self.sequences)

@@ -15,7 +15,6 @@ from rasterio.plot import reshape_as_image
 import argparse
 from tqdm import tqdm
 import pandas as pd
-import seaborn as sns
 from datetime import datetime
 import sys
 import re
@@ -90,7 +89,6 @@ def load_bands(img_dir, bands=None):
         
         if not band_files:
             missing_bands.append(band)
-            # Don't print warning here, handle missing bands later if needed
             continue
         
         try:
@@ -273,7 +271,7 @@ def visualize_image(img_dir, output_dir=None, include_ndvi=True):
         bands_to_load = ['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B11', 'B12']
         bands_to_load = [b for b in bands_to_load if b in available_bands]
         
-        band_data, missing_bands = load_bands(img_dir, bands_to_load)
+        band_data = load_bands(img_dir, bands_to_load)
         
         # Check if we have enough bands to create visualizations
         essential_bands = ['B02', 'B03', 'B04']
@@ -300,9 +298,9 @@ def visualize_image(img_dir, output_dir=None, include_ndvi=True):
         
         # Create figure
         if include_ndvi:
-            fig, axs = plt.subplots(2, 2, figsize=(15, 12))
+            axs = plt.subplots(2, 2, figsize=(15, 12))
         else:
-            fig, axs = plt.subplots(1, 2, figsize=(15, 6))
+            axs = plt.subplots(1, 2, figsize=(15, 6))
         
         # True Color (RGB)
         rgb = create_rgb_image(band_data, 'B04', 'B03', 'B02', scale=0.0001)

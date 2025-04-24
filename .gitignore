@@ -1,8 +1,11 @@
 /dataset
 /venv
-/output
 __pycache__
-ReportInstructions.md
-powerpoint.md
-writingExample.md
-report.md
+
+/output/eval*
+/output/filter*
+/output/train_2
+/output/train_7
+
+/output/train_8/best_model.pth
+/output/train_8/final_model.pth
